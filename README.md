@@ -13,10 +13,41 @@ https://mrnorman.github.io
 Author for DKRZ Levante: Jared Frazier, Leibniz Institute of Atmospheric
 Physics, https://jfdev001.github.io/
 
+```
+git-for-everyone-miniweather/
+├── Dockerfile
+├── documentation
+│   └── images
+├── LICENSE
+├── miniweather
+│   ├── build
+│   │   ├── check_output
+│   │   ├── cmake_levante_config_and_build
+│   │   └── cmake_levante_test
+│   ├── CMakeLists.txt
+│   ├── miniWeather_mpi.F90
+│   ├── miniWeather_mpi_openacc.F90
+│   ├── miniWeather_mpi_openmp.F90
+│   ├── miniWeather_serial.F90
+│   ├── scripts
+│   │   ├── run
+│   │   ├── scaling
+│   │   │   └── launch_sample_scaling_experiments
+│   │   ├── templates
+│   │   │   ├── make_run_scripts
+│   │   │   └── miniweather.run.template
+│   │   └── viz
+│   │       └── sample_scaling_results.py
+│   └── utils.cmake
+├── NEW_FILE.txt
+└── README.md
+
+9 directories, 17 files
+```
+
 # Table of Contents
 
 - [Introduction](#introduction)
-  * [Brief Description of the Code](#brief-description-of-the-code)
 - [Compiling and Running the Code](#compiling-and-running-the-code)
   * [Software Dependencies](#software-dependencies)
   * [Basic Setup](#basic-setup)
@@ -25,12 +56,6 @@ Physics, https://jfdev001.github.io/
   * [Running the Code](#running-the-code)
   * [Running Performance Experiments](#running-performance-experiments)
   * [Viewing the Output](#viewing-the-output)
-- [Parallelization](#parallelization)
-  * [Indexing](#indexing)
-  * **[MPI Domain Decomposition](#mpi-domain-decomposition)**
-  * **[OpenMP CPU Threading](#openmp-cpu-threading)**
-  * **[OpenACC Accelerator Threading](#openacc-accelerator-threading)**
-  * **[OpenMP Offload Accelerator Threading](#openmp-offload-accelerator-threading)**
 - [Numerical Experiments](#numerical-experiments)
   * [Rising Thermal](#rising-thermal)
   * [Colliding Thermals](#colliding-thermals)
@@ -44,7 +69,6 @@ Physics, https://jfdev001.github.io/
   * [Finite-Volume Spatial Discretization](#finite-volume-spatial-discretization)
   * [Runge-Kutta Time Integration](#runge-kutta-time-integration)
   * [Hyper-viscosity](#hyper-viscosity)
-- [MiniWeather Model Scaling Details](#miniweather-model-scaling-details)
 - [Checking for Correctness](#checking-for-correctness)
 
 
@@ -63,49 +87,6 @@ using MPI + X, where X is OpenMP, OpenACC, CUDA, or potentially other
 approaches to CPU and accelerated parallelization. The code uses periodic
 boundary conditions in the x-direction and solid wall boundary conditions in
 the z-direction. 
-
-## Brief Description of the Code
-
-### Domain Parameters
-
-A fuller description of the science, math, and dynamics are play are given
-later, but this section is reserved to describing some of the main variables
-and flow in the code. The code is decomposed in two spatial dimensions, x and
-z, with `nx_glob` and `nz_glob` cells in the global domain and nx and nz cells
-in the local domain, using straightforward domain decomposition for MPI-level
-parallelization. The global domain is of size xlen and zlen meters, and hs
-“halo” cells are appended to both sides of each dimension for convenience in
-forming stencils of cells for reconstruction.
-
-### Fluid State Variables
-
-There are four main arrays used in this code: `state`, `state_tmp`, `flux`, and `tend`, and the dimensions for each are given in the code upon declaration in the comments. Each of these arrays is described briefly below:
-
-* `state`: This is the fluid state at the current time step, and it is the only array that persists from one time step to the next. The other four are only used within the calculations to advance the model to the next time step. The fluid state describes the average state over each cell area in the spatial domain. This variable contains four fluid states, which are the traditional mass, momenta, and thermodynamic quantities of most fluid models:
-  1. Density (`ID_DENS`): The 2-D density of the fluid, <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\rho" title="\large \rho" />, in <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\text{kg}\&space;\text{m}^{-2}" title="\large \text{kg}\ \text{m}^{-2}" /> (note this is normally <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\text{kg}\&space;\text{m}^{-3}" title="\large \text{kg}\ \text{m}^{-3}" />, but this is a 2-D model, not 3-D)
-  2. U-momentum (`ID_UMOM`): The momentum per unit area of the fluid in the x-direction calculated as <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\rho&space;u" title="\large \rho u" />, where u is the x-direction wind velocity. The units are <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\text{kg}\&space;\text{m}^{-1}\&space;\text{s}^{-1}" title="\large \text{kg}\ \text{m}^{-1}\ \text{s}^{-1}" />. Note that to get true momentum, you must integrate over the cell.
-  2. W-momentum (`ID_WMOM`): The momentum per unit area of the fluid in the z-direction calculated as <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\rho&space;w" title="\large \rho w" />, where w is the z-direction wind velocity. The units are <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\text{kg}\&space;\text{m}^{-1}\&space;\text{s}^{-1}" title="\large \text{kg}\ \text{m}^{-1}\ \text{s}^{-1}" />. Note that to get true momentum, you must integrate over the cell.
-  4. Potential Temperature (`ID_RHOT`): The product of density and potential temperature, <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\rho&space;\theta" title="\large \rho \theta" />, where <img src="https://latex.codecogs.com/svg.latex?\theta=T\left(P_{0}/P\right)^{R_{d}/c_{p}}" /> , <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;P_{0}=10^{5}\,\text{Pa}" title="\large P_{0}=10^{5}\,\text{Pa}" />, T is the true temperature, and <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;R_d" title="\large R_d" /> and<img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;c_p" title="\large c_p" /> are the dry air constant and specific heat at constant pressure for dry air, respectively. The units of this quantity are <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\text{K}\,\text{kg}\,\text{m}^{-2}" title="\large \text{K}\,\text{kg}\,\text{m}^{-2}" />.
-* `state_tmp`: This is a temporary copy of the fluid state used in the Runge-Kutta integration to keep from overwriting the state at the beginning of the time step, and it has the same units and meaning.
-* `flux`: This is fluid state at cell boundaries in the x- and z-directions, and the units and meanings are the same as for `state` and `state_tmp`. In the x-direction update, the values of `flux` at indices `i` and `i+1` represents the fluid state at the left- and right-hand boundaries of cell `i`. The indexing is analogous in the z-direction. The fluxes are used to exchange fluid properties with neighboring cells.
-* `tend`: This is the time tendency of the fluid state <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\partial\mathbf{q}/\partial&space;t" title="\large \partial\mathbf{q}/\partial t" />, where <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\mathbf{q}" title="\large \mathbf{q}" /> is the the state vector, and as the name suggests, it has the same meaning and units as state, except per unit time (appending <img src="https://latex.codecogs.com/svg.latex?\inline&space;\dpi{300}&space;\large&space;\text{s}^{-1}" title="\large \text{s}^{-1}" /> to the units). In the Finite-Volume method, the time tendency of a cell is equivalent to the divergence of the flux across a cell.
-
-### Overall Model Flow
-
-This code follows a traditional Finite-Volume control flow.
-
-To compute the time tendency, given an initial state at the beginning of a time
-step that contains cell-averages of the fluid state, the value of the state at
-cell boundaries is reconstructed using a stencil. Then, a viscous term is added
-to the fluid state at the cell boundaries to improve stability. Next, the
-tendencies are computed as the divergence of the flux across the cell. Finally,
-the tendencies are applied to the fluid state.
-
-Once the time tendency is computed, the fluid PDEs are essentially now cast as
-a set of ODEs varying only in time, and this is called the “semi-discretized”
-form of the equations. To solve the equations in time, an ODE solver is used,
-in this case, a Runge-Kutta method. Finally, at the highest level, the
-equations are split into separate solves in each dimension, x and z.
 
 # Compiling and Running the Code
 
@@ -127,7 +108,6 @@ equations are split into separate solves in each dimension, x and z.
 cd /work/bm1233/${USER}  
 git clone git@github.com:jfdev001/miniWeather.git 
 cd miniWeather
-git submodule update --init --recursive
 ```
 
 To find that repository on GitHub, go to  
@@ -149,7 +129,6 @@ cd /work/bm1233/${USER}
 # assuming you have forked miniweather
 git clone git@github.com:YOUR_GITHUB_USER_NAME_HERE/miniWeather.git 
 cd miniWeather
-git submodule update --init --recursive
 
 # by default, the remote origin (i.e., source of your code on GitHub
 # and its destination when pushing) is set to 
@@ -176,12 +155,12 @@ docker run -v $(realpath ./):/workspace/miniweather -it jfdev001/miniweather:loc
 Then, make sure that you are in the `build/` directory and do:
 
 ```shell
-# TODO: something here??
+# TODO: something here?? maybe a TEST??
 ```
 
 This generates a directory called `build_output/test` where all configuration
 (e.g., auto-generated Makefiles) and compilation artifacts (e.g., executable
-binaries like `serial`, `openmp`, and `mpi`).
+binaries like `serial`, `openmp`, and `mpi`) are stored.
 
 You should *always* read the usage documentation for any script you run. For
 nearly every script provided, you can do the following to get usage
@@ -192,48 +171,6 @@ documentation
 # also if you encounter permissions issues, call `chmod +x <script_name>`
 ./<script_name> -h
 ```
-
-Pay close attention also to any examples section in usage documentation.
-
-If you are using MobaXTerm you should have two ssh sessions open and connected
-to Levante: (1) one just for looking at the uage documentation of scripts so
-that you know what the inputs and outputs are, and (2) one for actually
-launching scripts and/or editing files. If you are Linux or Mac, you can also
-launch multiple terminals and each of them can independently ssh to Levante.
-Levante also comes with `tmux` (terminal multiplexer) by default, so you could
-use that instead if you're already familiar.
-
-You can check to see what `cmake_levante_test` by typing
-
-```shell
-./cmake_levante_test -h
-```
-
-Note that the `cmake_levante_test` simply wraps the
-`cmake_levante_config_and_build` script discussed in the following sections.
-
-In the real world, there may be limited or *no* documentation for software that
-you are using. Even worse, they're may be documentation but it could be *out of
-date*. This is almost worse than having no documentation because you might
-think the software is doing one thing while it is in reality doing something
-completely unexpected. You need to be prepared to *read* through code to
-determine what it does. When doing this, keep mind the following:
-
-* What are the inputs to the code? 
-    * Does it take positional arguments? Does it take flags? 
-    * Does it have optional arguments? What are the defaults of those optional
-    arguments? 
-    * Does it read from a file?
-    * What assumptions (if any) about paths (e.g., directories) does the code
-    make?
-
-* What are the outputs of the code?
-    * Does it write to standard output (i.e., the terminal)?
-    * Does it produce large files (e.g., netcdf)? Where do those files get 
-    written?
-
-* Does the script launch Slurm jobs or execute locally?
-
 
 ## Altering the Code's Configurations
 
@@ -361,134 +298,9 @@ Below is an example output from the script:
 
 <img width="999" height="799" alt="miniweather_openmp" src="https://github.com/user-attachments/assets/5f2959bf-393a-4ae2-8008-67383dffcc01" />
 
-
 ## Viewing the Output
 
 The file I/O is done in the netCDF format: (https://www.unidata.ucar.edu/software/netcdf). To me, the easiest way to view the data is to use a tool called “ncview” (http://meteora.ucsd.edu/~pierce/ncview_home_page.html). To use it, you can simply type `ncview output.nc`, making sure you have X-forwarding enabled in your ssh session. Further, you can call `ncview -frames output.nc`, and it will dump out all of your frames in the native resolution you're viewing the data in, and you you can render a movie with tools like `ffmpeg`. 
-
-# Parallelization
-
-This code was designed to parallelize with MPI first and then OpenMP, OpenACC, OpenMP offload, or `parallel_for` next, but you can always parallelize with OpenMP or OpenACC without MPI if you want. But it is rewarding to be able to run it on multiple nodes at higher resolution for more and sharper eddies in the dynamics.
-
-As you port the code, you'll want to change relatively little code at a time, re-compile, re-run, and look at the output to see that you're still getting the right answer. There are advantages to using a visual tool to check the answer (e.g., `ncview`), as it can sometimes give you clues as to why you're not getting the right answer. 
-
-Note that you only need to make changes code within the first 450 source lines for C and Fortran, and each loop that needs threading is decorated with a `// THREAD ME` comment. Everything below that is initialization and I/O code that doesn't need to be parallelized (unless you want to) for C and Fortran directives-based approaches.
-
-## Indexing
-
-The code makes room for so-called “halo” cells in the fluid state. This is a common practice in any algorithm that uses stencil-based reconstruction to estimate variation within a domain. In this code, there are `hs` halo cells on either side of each spatial dimension, and I pretty much hard-code `hs=2`.
-
-### Fortran
-
-In the Fortran code's fluid state (`state`), the x- and z-dimensions are dimensioned as multi-dimensional arrays that range from `1-hs:nx+hs`. In the x-direction, `1-hs:0` belong to the MPI task to the left, cells `1:nx` belong to the current MPI task, and `nx+1:nx+hs` belong to the MPI task to the right. In the z-dimension, `1-hs:0` are artificially set to mimic a solid wall boundary condition at the bottom, and `nz+1:nz+hs` are the same for the top boundary. The cell-interface fluxes (`flux`) are dimensioned as `1:nx+1` and `1:nz+1` in the x- and z-directions, and the cell average tendencies (`tend`) are dimensioned `1:nx` and `1:nz` in the x- and z-directions. The cell of index `i` will have left- and right-hand interface fluxes of index `i` and `i+1`, respectively, and it will be evolved by the tendency at index `i`. The analog of this is also true in the z-direction.
-
-## MPI Domain Decomposition
-
-This code was designed to use domain decomposition, where each MPI rank “owns” a certain set of cells in the x-direction and contains two “halo” cells from the left- and right-hand MPI tasks in the x-direction as well. The domain is only decomposed in the x-direction and not the z-direction for simplicity.
-
-**IMPORTANT**: Please be sure to set `nranks`, `myrank`, `nx`, `i_beg`, `left_rank`, and `right_rank`. These are clearly marked in the serial source code. You can set more variables, but these are used elsewhere in the code (particularly in the parallel file I/O), so they must be set.
-
-To parallelize with MPI, there are only two places in the code that need to be altered. The first is the initialization, a subroutine / function named `init`, where you must determine the number of ranks, you process's rank, the beginning index of your rank's first cell in the x-direction, the number of x-direction cells your rank will own, and the MPI rank IDs that are to your left and your right. Because the code is periodic in the x-direction, your left and right neighboring ranks will wrap around. For instance, if your are rank `0`, your left-most rank will be `nranks-1`.
-
-The second place is in the routine that sets the halo values in the x-direction. In this routine, you need to:
-
-1. Create MPI data buffers (at the same place the other arrays are declared) to hold the data that needs to be sent and received, allocate them in the `init()` routine, and deallocate them in the `finalize()` routine.
-
-2. Pack the data you need to send to your left and right MPI neighbors
-
-3. Send the data to your left and right MPI neighbors
-
-4. Receive the data from your left and right MPI neighbors
-
-5. Unpack the data from your left and right neighbors and place the data into your MPI rank's halo cells. 
-
-Once you complete this, the code will be fully parallelized in MPI. Both of the places you need to add code for MPI are marked in the serial code, and there are some extra hints in the `set_halo_values_x()` routine as well.
-
-## OpenMP CPU Threading
-
-For the OpenMP code, you basically need to decorate the loops with `omp parallel do` in Fortran or `omp parallel for` in C, and pay attention to any variables you need to make `private()` so that each thread has its own copy. Keep in mind that OpenMP works best on “outer” loops rather than “inner” loops. Also, for sake of performance, there are a couple of instances where it is wise to use the “collapse” clause because the outermost loop is not large enough to support the number of threads most CPUs have.
-
-In Fortran, you can parallelize three loops with the following directive:
-
-```fortran
-!$omp parallel do collapse(3)
-do ll = 1 , NUM_VARS
-  do k = 1 , nz
-    do i = 1 , nx
-      state_out(i,k,ll) = state_init(i,k,ll) + dt * tend(i,k,ll)
-    enddo
-  enddo
-enddo
-```
-
-This will collapse the three loops together (combining their parallelism) and then launch that parallelism among a number of CPU threads.
-
-## OpenACC Accelerator Threading
-
-To thread the same loops among the threads on a GPU, you will use the following in Fortran:
-
-```fortran
-!$acc parallel loop collapse(3)
-do ll = 1 , NUM_VARS
-  do k = 1 , nz
-    do i = 1 , nx
-      state_out(i,k,ll) = state_init(i,k,ll) + dt * tend(i,k,ll)
-    enddo
-  enddo
-enddo
-```
-
-The OpenACC approach will differ depending on whether you're in Fortran or C. Just a forewarning, OpenACC is much more convenient in Fortran when it comes to data movement because in Fortran, the compiler knows how big your arrays are, and therefore the compiler can (and does) create all of the data movement for you (NOTE: This is true for PGI and Cray but not for GNU at the moment). All you have to do is optimize the data movement after the fact. for more information about the OpenACC copy directives, see:
-
-https://github.com/mrnorman/miniWeather/wiki/A-Practical-Introduction-to-GPU-Refactoring-in-Fortran-with-Directives-for-Climate#optimizing--managing-data-movement
-
-### Fortran Code
-
-The OpenACC parallelization is a bit more involved when it comes to performance. But, it's a good idea to just start with the kernels themselves, since the compiler will generate all of your data statements for you on a per-kernel basis. You need to pay attention to private variables here as well. Only arrays need to be privatized. Scalars are automatically privatized for you.
-
-Once you're getting the right answer with the kernels on the GPU, you can look at optimizing data movement by putting in data statements. I recommend putting data statements for the `state`, `tend`, `flux`, `hy_*`, and the MPI buffers (`sendbuf_l`, `sendbuf_r`, `recvbuf_l`, and `recvbuf_r`) around the main time stepping loop. Then, you need to move the data to the host before sending MPI data, back to the device once you receive MPI data, and to the host before file I/O.
-
-## OpenMP Offload Accelerator Threading
-
-To launch the same loops in OpenMP offload on a GPU's threads, you will use:
-
-```fortran
-!$omp target teams distribute parallel do simd collapse(3)
-do ll = 1 , NUM_VARS
-  do k = 1 , nz
-    do i = 1 , nx
-      state_out(i,k,ll) = state_init(i,k,ll) + dt * tend(i,k,ll)
-    enddo
-  enddo
-enddo
-```
-
-Note that some compilers do different things for `simd` and `parallel for`, and therefore, there is no portable use of OpenMP offload at this point. In C / C++, this will be:
-
-```C++
-#pragma omp target teams distribute parallel for simd collapse(3)
-for (ll=0; ll<NUM_VARS; ll++) {
-  for (k=0; k<nz; k++) {
-    for (i=0; i<nx; i++) {
-      inds = ll*(nz+2*hs)*(nx+2*hs) + (k+hs)*(nx+2*hs) + i+hs;
-      indt = ll*nz*nx + k*nx + i;
-      state_out[inds] = state_init[inds] + dt * tend[indt];
-    }
-  }
-}
-```
-
-### Why Doesn't MiniWeather Use CUDA?
-
-Because if you've refactored your code to use kernel launching (i.e., CUDA), you should really be using a C++ portability framework. The code is basically identical, but it can run on many different backends from a single source.
-
-### Why Doesn't MiniWeather Use Kokkos or RAJA?
-
-I chose not to use the mainline C++ portability frameworks for two main reasons.
-
-1. It's easier to compile and managed things with a C++ performance portability layer that's < 3K lines of code long, hence: [YAKL (Yet Another Kernel Launcher)](github.com/mrnorman/YAKL). 
-2. Kokkos in particular would not play nicely with the rest of the code in the CMake project. Likely if a Kokkos version is added, it will need to be a completely separate project and directory.
-3. With `YAKL.h` and `Array.h`, you can see for yourself what's going on when we launch kernels using `parallel_for` on different hardware backends.
 
 # Numerical Experiments
 
@@ -657,17 +469,6 @@ and this is also solved with the Finite-Volume method just like above. The hyper
 
 where <img src="https://latex.codecogs.com/svg.latex?\dpi{300}&space;\large&space;\beta\in\left[0,1\right]" title="\large \beta\in\left[0,1\right]" /> is a user-defined parameter to control the strength of the diffusion, where a higher value gives more diffusion. The parameter <img src="https://latex.codecogs.com/svg.latex?\dpi{300}&space;\large&space;\beta" title="\large \beta" /> is not sensitive to the grid spacing, and it seems that <img src="https://latex.codecogs.com/svg.latex?\dpi{300}&space;\large&space;\beta=0.25" title="\large \beta=0.25" /> is generally enough to get rid of <img src="https://latex.codecogs.com/svg.latex?\dpi{300}&space;\large&space;2\Delta&space;x" title="\large 2\Delta x" /> noise contamination.
 
-# MiniWeather Model Scaling Details
-
-If you want to do scaling studies with miniWeather, this section will be important to make sure you're doing an apples-to-apples comparison.
-
-* `sim_time`: The `sim_time` parameter does not mean the wall time it takes to simulate but rather refers amount of model time simulated. As you increase `sim_time`, you should expect the walltime to increase linearly.
-* `nx_glob, nz_glob`: As a rule, it's easiest if you always keep `nx_glob = nz_glob * 2` since the domain is always 20km x 10km in the x- and z-directions. As you increase `nx_glob` (and proportionally `nz_glob`) by some factor `f`, the time step automatically reduced by that same factor, `f`. Therefore, increasing `nx_glob` by 2x leads to 8x more work that needs to be done. Thus, with the same amount of parallelism, you should expect a 2x increase in `nx_glob` and `nz_glob` to increase the walltime by 8x (neglecting parallel overhead concerns).
-  * More precisely, the time step is directly proportional to the minimum grid spacing. The x- and y-direction grid spacings are: `dx=20km/nx_glob` and `dz=10km/nz_glob`. So as you decrease the minimum grid spacing (by increasing `nx_glob` and/or `nz_glob`), you proportionally decrease the size of the time step and therefore proportionally increase the number of time steps you need to complete the simulation (thus proportionally increasing the expected walltime).
-* The larger the problem size, `nx_glob` and `nz_glob`, the lower the relative parallel overheads will be. You can get to a point where there isn't enough work on the accelerator to keep it busy and / or enough local work to amortize parallel overheads. At this point, you'll need to increase the problem size to see better scaling. This is a typical [Amdahl's Law](https://en.wikipedia.org/wiki/Amdahl%27s_law) situation.
-
-Remember that you can control each of these parameters through the CMake configure.
-
 # Checking for Correctness
 
 ## Domain-Integrated Mass and Total Energy
@@ -677,8 +478,6 @@ There are two main ways to check for correctness. The easiest is to look at the 
 ### Mass Change
 
 In all cases for Fortran and C, the relative mass change printed out should be at machine precision (magnitude `1.e-13` or lower just to be flexible with reduced precision optimizations). If the mass changes more than this, you've introduced a bug.
-
-For the C++ code, which uses single precision, the relative mass displayed at the end of the run should be of magnitude `1.e-9` or lower.
 
 ### Total Energy Change
 
