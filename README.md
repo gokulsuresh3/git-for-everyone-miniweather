@@ -36,13 +36,14 @@ git-for-everyone-miniweather/
 │   │   ├── templates
 │   │   │   ├── make_run_scripts
 │   │   │   └── miniweather.run.template
+│   │   ├── utils
 │   │   └── viz
 │   │       └── sample_scaling_results.py
 │   └── utils.cmake
 ├── NEW_FILE.txt
 └── README.md
 
-9 directories, 17 files
+10 directories, 17 files
 ```
 
 # Table of Contents
