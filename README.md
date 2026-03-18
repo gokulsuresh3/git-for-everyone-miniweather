@@ -106,7 +106,6 @@ the z-direction.
 ## Basic Setup
 
 ```shell
-cd /work/bm1233/${USER}  
 git clone git@github.com:jfdev001/miniWeather.git 
 cd miniWeather
 ```
@@ -126,7 +125,6 @@ approach since then you can upload (i.e., `git push`) your code to a repository
 on your GitHub. The workflow would look something like the following
 
 ```shell
-cd /work/bm1233/${USER}  
 # assuming you have forked miniweather
 git clone git@github.com:YOUR_GITHUB_USER_NAME_HERE/miniWeather.git 
 cd miniWeather
