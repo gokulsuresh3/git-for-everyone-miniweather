@@ -154,7 +154,7 @@ docker run -v $(realpath ./):/workspace/miniweather -it jfdev001/miniweather:loc
 Then, make sure that you are in the `build/` directory and do:
 
 ```shell
-# TODO: something here?? maybe a TEST??
+# TODO: something here?? maybe a TEST?? Any scripts that run tests?
 ```
 
 This generates a directory called `build_output/test` where all configuration
